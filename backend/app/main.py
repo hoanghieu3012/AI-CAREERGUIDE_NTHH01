@@ -1,0 +1,79 @@
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.core.config import settings
+from app.services.identity import router as identity_router
+from app.services.assessment import router as assessment_router
+from app.modules.assessment.router import router as assessments_modular_router
+from app.services.recommender import router as recommender_router
+from app.services.taxonomy import router as taxonomy_router
+from app.services.gap_roadmap_engine import router as roadmap_router
+from app.services.llamaindex_rag_orchestrator import router as rag_governance_router
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup tasks
+    print("Starting AI CareerGuide Backend Core...")
+    yield
+    # Shutdown tasks
+    print("Shutting down AI CareerGuide Backend Core...")
+
+
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    version=settings.VERSION,
+    description="""
+    ## AI CareerGuide: Personalized Major Guidance for Vietnamese High School Students
+    Backend Core REST API built on FastAPI, SQLAlchemy 2.0 Async, PostgreSQL 16 + pgvector.
+    
+    ### 6 Modular Services Architecture:
+    1. **identity**: OWASP ASVS Level 2 Argon2id authentication, RBAC, and Personal Data Consent tracking under Law 91/2025/QH15.
+    2. **assessment**: Holland RIASEC questionnaires, cognitive preference mapping, and national Z-score normalization for admission subject blocks.
+    3. **recommender**: Deterministic 3-pillar hybrid compatibility scoring model (RIASEC Cosine Similarity, Z-score CDF, Cognitive trait matching).
+    4. **taxonomy**: Level-IV MOET major catalog (Circular 09/2022/TT-BGDĐT), Phoenix Ho career tree, subject blocks, and skill taxonomies. (Pure Guidance Scope: strictly no tuition or geographic bias).
+    5. **gap_roadmap_engine**: Cached standardized study roadmaps (write-once/read-many indexed by major_code <= 1s) with verified static fallback templates.
+    6. **llamaindex_rag_orchestrator**: Dual RAG orchestration, Human-in-the-Loop staging review (STREAM_A & STREAM_B), PII sanitization, and 1536-dim vector retrieval.
+    """,
+    lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
+
+# CORS Middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Register 6 Modular Service Routers under /api/v1
+app.include_router(identity_router, prefix=settings.API_V1_STR)
+app.include_router(assessment_router, prefix=settings.API_V1_STR)
+app.include_router(assessments_modular_router, prefix=settings.API_V1_STR)
+app.include_router(recommender_router, prefix=settings.API_V1_STR)
+app.include_router(taxonomy_router, prefix=settings.API_V1_STR)
+app.include_router(roadmap_router, prefix=settings.API_V1_STR)
+app.include_router(rag_governance_router, prefix=settings.API_V1_STR)
+
+
+@app.get("/health", tags=["Health & Status"])
+async def health_check():
+    return {
+        "status": "healthy",
+        "service": settings.PROJECT_NAME,
+        "version": settings.VERSION,
+        "environment": settings.ENVIRONMENT
+    }
+
+
+@app.get("/", tags=["Root"])
+async def root():
+    return {
+        "message": "Welcome to AI CareerGuide Backend API",
+        "docs": "/docs",
+        "health": "/health"
+    }
