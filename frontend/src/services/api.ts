@@ -3,7 +3,19 @@
  * Handles JWT token injection, unified error management, and fallback demonstration.
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1';
+// In Vercel Multi-Services deployment, API is routed under /api (with /v1 prefix) on the same origin.
+// In SSR/functions with service bindings, BACKEND_URL is injected.
+// In local dev without Vercel, it falls back to local uvicorn port 8000.
+const globalProcess = typeof globalThis !== 'undefined' ? (globalThis as any).process : undefined;
+const backendUrlBinding = globalProcess?.env?.BACKEND_URL;
+
+const API_BASE_URL: string =
+  (import.meta.env.VITE_API_URL as string) ||
+  (backendUrlBinding
+    ? `${backendUrlBinding}/api/v1`
+    : import.meta.env.DEV
+    ? 'http://127.0.0.1:8000/api/v1'
+    : '/api/v1');
 
 export class ApiError extends Error {
   status: number;

@@ -42,7 +42,11 @@ export const RoadmapsHubPage: React.FC = () => {
   useEffect(() => {
     loadSaved();
     window.addEventListener('careerguide_roadmaps_updated', loadSaved);
-    return () => window.removeEventListener('careerguide_roadmaps_updated', loadSaved);
+    window.addEventListener('careerguide_auth_changed', loadSaved);
+    return () => {
+      window.removeEventListener('careerguide_roadmaps_updated', loadSaved);
+      window.removeEventListener('careerguide_auth_changed', loadSaved);
+    };
   }, []);
 
   const handleCreateRoadmapForMajor = (m: MajorItem) => {

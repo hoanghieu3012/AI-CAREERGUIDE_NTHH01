@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, AuthResponse, UserProfileDetails } from '../types';
 import { authService } from '../services/careerServices';
+import { purgeLegacyStorage } from '../utils/userStorage';
 
 interface AuthContextType {
   user: User | null;
@@ -18,6 +19,11 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Purge legacy un-scoped demo keys on application boot so they never leak to new accounts
+  useEffect(() => {
+    purgeLegacyStorage();
+  }, []);
+
   const [user, setUser] = useState<User | null>(() => {
     const saved = localStorage.getItem('careerguide_user');
     return saved ? JSON.parse(saved) : null;
@@ -48,20 +54,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(res.user);
     localStorage.setItem('careerguide_token', res.access_token);
     localStorage.setItem('careerguide_user', JSON.stringify(res.user));
+    window.dispatchEvent(new CustomEvent('careerguide_auth_changed'));
     return res;
   };
 
-  const register = async (email: string, password: string, fullName?: string, role?: string) => {
+  const register = async (email: string, password: string, fullName?: string) => {
+    // Public registration is strictly locked to STUDENT role
     const res: AuthResponse = await authService.register({
       email,
       password,
       full_name: fullName,
-      role: role || 'STUDENT',
+      role: 'STUDENT',
     });
     setToken(res.access_token);
     setUser(res.user);
     localStorage.setItem('careerguide_token', res.access_token);
     localStorage.setItem('careerguide_user', JSON.stringify(res.user));
+    window.dispatchEvent(new CustomEvent('careerguide_auth_changed'));
     return res;
   };
 
@@ -85,6 +94,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     localStorage.removeItem('careerguide_token');
     localStorage.removeItem('careerguide_user');
+    window.dispatchEvent(new CustomEvent('careerguide_auth_changed'));
   };
 
   const updateProfile = (profileData: { full_name?: string; profile?: UserProfileDetails }) => {

@@ -15,7 +15,6 @@ export const AuthPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
-  const [role, setRole] = useState<'STUDENT' | 'ADMIN'>('STUDENT');
   const [errorMsg, setErrorMsg] = useState('');
   const [loading, setLoading] = useState(false);
   const [consentModalOpen, setConsentModalOpen] = useState(false);
@@ -34,16 +33,22 @@ export const AuthPage: React.FC = () => {
       return;
     }
 
-    if (isRegister && !agreedPolicy) {
-      setErrorMsg('Bạn cần đồng ý với chính sách bảo vệ dữ liệu cá nhân (Luật 91/2025/QH15).');
-      return;
+    if (isRegister) {
+      if (email.toLowerCase().includes('admin')) {
+        setErrorMsg('Không được phép đăng ký tài khoản Quản trị viên (ADMIN) qua cổng đăng ký công khai.');
+        return;
+      }
+      if (!agreedPolicy) {
+        setErrorMsg('Bạn cần đồng ý với chính sách bảo vệ dữ liệu cá nhân (Luật 91/2025/QH15).');
+        return;
+      }
     }
 
     setLoading(true);
     try {
       let authResult;
       if (isRegister) {
-        authResult = await register(email, password, fullName, role);
+        authResult = await register(email, password, fullName);
       } else {
         authResult = await login(email, password);
       }
@@ -62,17 +67,17 @@ export const AuthPage: React.FC = () => {
     }
   };
 
-  // Quick Demo credentials helper
+  // Quick Demo credentials helper for Login mode
   const fillDemoAccount = (selectedRole: 'STUDENT' | 'ADMIN') => {
+    setIsRegister(false);
+    setErrorMsg('');
     if (selectedRole === 'ADMIN') {
       setEmail('admin@careerguide.vn');
       setPassword('AdminSecret@2026');
-      setRole('ADMIN');
       setFullName('Quản Trị Viên Kiểm Duyệt');
     } else {
       setEmail('hocsinh.genz@gmail.com');
       setPassword('StudentSecret@2026');
-      setRole('STUDENT');
       setFullName('Nguyễn Văn Tuấn');
     }
   };
@@ -86,7 +91,7 @@ export const AuthPage: React.FC = () => {
             <Lock className="w-6 h-6" />
           </div>
           <h2 className="text-2xl font-extrabold text-slate-800">
-            {isRegister ? 'Tạo Tài Khoản Mới' : 'Đăng Nhập Hệ Thống'}
+            {isRegister ? 'Tạo Tài Khoản Học Sinh' : 'Đăng Nhập Hệ Thống'}
           </h2>
           <p className="text-xs text-slate-500">
             Bảo mật Argon2id chuẩn OWASP ASVS Level 2
@@ -115,26 +120,33 @@ export const AuthPage: React.FC = () => {
           </button>
         </div>
 
-        {/* Demo Account Pills */}
-        <div className="space-y-1.5">
-          <p className="text-[11px] font-bold text-slate-500 uppercase">1-Click Chọn tài khoản mẫu:</p>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => fillDemoAccount('STUDENT')}
-              className="flex-1 py-2 px-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-xs font-bold transition-all"
-            >
-              🎓 Học sinh Demo
-            </button>
-            <button
-              type="button"
-              onClick={() => fillDemoAccount('ADMIN')}
-              className="flex-1 py-2 px-2.5 rounded-xl bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-700 text-xs font-bold transition-all"
-            >
-              🛡️ Admin Demo
-            </button>
+        {/* Demo Account Pills (Only shown in Login mode) */}
+        {!isRegister ? (
+          <div className="space-y-1.5">
+            <p className="text-[11px] font-bold text-slate-500 uppercase">1-Click Chọn tài khoản mẫu:</p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => fillDemoAccount('STUDENT')}
+                className="flex-1 py-2 px-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-xs font-bold transition-all"
+              >
+                🎓 Học sinh Demo
+              </button>
+              <button
+                type="button"
+                onClick={() => fillDemoAccount('ADMIN')}
+                className="flex-1 py-2 px-2.5 rounded-xl bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-700 text-xs font-bold transition-all"
+              >
+                🛡️ Admin Demo
+              </button>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="p-3 rounded-2xl bg-indigo-50/70 border border-indigo-100 text-[11px] text-indigo-800 flex items-start gap-2.5">
+            <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+            <span>Cổng đăng ký dành riêng cho <strong>Học sinh & Phụ huynh</strong>. Dữ liệu mỗi tài khoản được bảo vệ độc lập và cô lập tuyệt đối.</span>
+          </div>
+        )}
 
         {/* Error Alert */}
         {errorMsg && (
@@ -163,7 +175,7 @@ export const AuthPage: React.FC = () => {
           )}
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">Email</label>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Địa chỉ Email</label>
             <div className="relative">
               <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
               <input
@@ -194,18 +206,6 @@ export const AuthPage: React.FC = () => {
 
           {isRegister && (
             <div className="space-y-3 pt-1">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Vai trò tài khoản</label>
-                <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value as any)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs bg-white focus:ring-2 focus:ring-brand-500"
-                >
-                  <option value="STUDENT">Học sinh / Phụ huynh (Định hướng nghề nghiệp)</option>
-                  <option value="ADMIN">Quản trị viên / Kiểm duyệt viên dữ liệu (Admin HITL)</option>
-                </select>
-              </div>
-
               <div className="flex items-start space-x-2 text-[11px] text-slate-600">
                 <input
                   type="checkbox"
@@ -233,20 +233,19 @@ export const AuthPage: React.FC = () => {
             disabled={loading}
             className="w-full py-3 rounded-2xl text-xs font-bold text-white bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-700 hover:to-indigo-700 shadow-md shadow-brand-500/25 flex items-center justify-center space-x-2 transition-all"
           >
-            <span>{loading ? 'Đang xử lý...' : isRegister ? 'Đăng Ký Tài Khoản' : 'Đăng Nhập'}</span>
-            <ArrowRight className="w-4 h-4" />
+            {loading ? (
+              <span>Đang xử lý...</span>
+            ) : (
+              <>
+                <span>{isRegister ? 'Tạo Tài Khoản Mới' : 'Đăng Nhập'}</span>
+                <ArrowRight className="w-4 h-4" />
+              </>
+            )}
           </button>
         </form>
 
-        <div className="text-center pt-2">
-          <button
-            type="button"
-            onClick={() => setConsentModalOpen(true)}
-            className="text-[11px] text-slate-400 hover:text-slate-600 flex items-center justify-center space-x-1 mx-auto"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-            <span>Xem điều khoản bảo mật dữ liệu cá nhân</span>
-          </button>
+        <div className="text-center text-[11px] text-slate-500">
+          Hệ thống tuân thủ chặt chẽ nguyên tắc bảo vệ quyền riêng tư theo Luật Dữ liệu 2025.
         </div>
       </div>
 

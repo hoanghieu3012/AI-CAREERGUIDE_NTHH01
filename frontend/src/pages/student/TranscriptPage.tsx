@@ -11,6 +11,12 @@ import {
   Sparkles,
   RotateCcw,
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import {
+  getScopedItem,
+  setScopedItem,
+  removeScopedItem,
+} from '../../utils/userStorage';
 
 interface SemesterGrades {
   math: number;
@@ -38,15 +44,33 @@ const EMPTY_GRADES: SemesterGrades = {
 
 export const TranscriptPage: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const userId = user?.id || null;
 
   const [grades, setGrades] = useState<SemesterGrades>(() => {
-    const saved = localStorage.getItem('careerguide_student_grades');
+    const saved = getScopedItem('student_grades', userId);
     return saved ? JSON.parse(saved) : EMPTY_GRADES;
   });
 
   const [isSaved, setIsSaved] = useState<boolean>(() => {
-    return localStorage.getItem('careerguide_student_grades') !== null;
+    return getScopedItem('student_grades', userId) !== null;
   });
+
+  useEffect(() => {
+    const saved = getScopedItem('student_grades', userId);
+    if (saved) {
+      try {
+        setGrades(JSON.parse(saved));
+        setIsSaved(true);
+      } catch {
+        setGrades(EMPTY_GRADES);
+        setIsSaved(false);
+      }
+    } else {
+      setGrades(EMPTY_GRADES);
+      setIsSaved(false);
+    }
+  }, [userId]);
 
   const subjects = [
     { key: 'math', label: 'Toán học', icon: '📐' },
@@ -69,14 +93,14 @@ export const TranscriptPage: React.FC = () => {
   };
 
   const handleSaveGrades = () => {
-    localStorage.setItem('careerguide_student_grades', JSON.stringify(grades));
+    setScopedItem('student_grades', JSON.stringify(grades), userId);
     setIsSaved(true);
   };
 
   const handleResetGrades = () => {
     setGrades(EMPTY_GRADES);
     setIsSaved(false);
-    localStorage.removeItem('careerguide_student_grades');
+    removeScopedItem('student_grades', userId);
   };
 
   const hasAnyGrade = Object.values(grades).some(val => val > 0);

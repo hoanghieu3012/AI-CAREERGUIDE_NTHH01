@@ -16,6 +16,13 @@ from app.schemas.identity import (
 
 
 async def register_user(db: AsyncSession, payload: UserRegisterRequest) -> User:
+    # Explicitly forbid registering ADMIN accounts via public registration
+    if payload.role == UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Không được phép tạo tài khoản Quản trị viên (ADMIN) qua cổng đăng ký công khai."
+        )
+
     # Check duplicate email
     query = select(User).where(User.email == payload.email)
     result = await db.execute(query)
@@ -33,7 +40,7 @@ async def register_user(db: AsyncSession, payload: UserRegisterRequest) -> User:
         email=payload.email,
         hashed_password=hashed_pwd,
         full_name=payload.full_name,
-        role=payload.role,
+        role=UserRole.STUDENT,
         is_active=True
     )
     db.add(user)

@@ -24,6 +24,11 @@ import {
   OFFICIAL_MOET_MAJORS,
   INITIAL_SIX_MAJORS,
 } from '../data/defaultTaxonomy';
+import {
+  getScopedItem,
+  setScopedItem,
+  removeScopedItem,
+} from '../utils/userStorage';
 
 // ==========================================
 // 1. AUTH & CONSENT SERVICES (FR01, NFR02)
@@ -31,25 +36,45 @@ import {
 
 export const authService = {
   async register(data: { email: string; password: string; full_name?: string; role?: string }): Promise<AuthResponse> {
+    // Explicitly forbid registering ADMIN accounts
+    if (data.role === 'ADMIN' || data.email.toLowerCase().includes('admin')) {
+      throw new Error('Không được phép tạo tài khoản Quản trị viên (ADMIN) qua cổng đăng ký công khai.');
+    }
+
     try {
       return await apiRequest<AuthResponse>('/identity/register', {
         method: 'POST',
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, role: 'STUDENT' }),
       });
     } catch (err: any) {
+      if (err.message && err.message.includes('Không được phép tạo tài khoản Quản trị viên')) {
+        throw err;
+      }
       console.warn('[AuthService] Backend DB offline/unreachable. Providing local fallback session:', err);
-      const isDemoAdmin = data.email.toLowerCase().includes('admin') || data.role === 'ADMIN';
-      const mockUser: User = {
-        id: isDemoAdmin ? 'admin_uuid_demo' : 'student_uuid_demo',
+
+      const normalizedEmail = data.email.trim().toLowerCase();
+      // Generate a unique isolated ID for this registered user
+      const uniqueUserId = 'usr_' + Math.abs(normalizedEmail.split('').reduce((acc, char) => (acc << 5) - acc + char.charCodeAt(0), 0)).toString(36) + '_' + Date.now().toString(36);
+
+      const newUser: User = {
+        id: uniqueUserId,
         email: data.email,
-        full_name: data.full_name || (isDemoAdmin ? 'Quản Trị Viên Kiểm Duyệt' : 'Học Sinh Demo'),
-        role: isDemoAdmin ? 'ADMIN' : 'STUDENT',
+        full_name: data.full_name || 'Học Sinh Mới',
+        role: 'STUDENT',
         created_at: new Date().toISOString(),
       };
+
+      // Save to local registry so user can log in again later with separate isolated data
+      try {
+        const existingUsers = JSON.parse(localStorage.getItem('careerguide_local_users') || '{}');
+        existingUsers[normalizedEmail] = newUser;
+        localStorage.setItem('careerguide_local_users', JSON.stringify(existingUsers));
+      } catch {}
+
       return {
-        access_token: 'demo_session_token_' + Date.now(),
+        access_token: 'session_token_' + Date.now(),
         token_type: 'bearer',
-        user: mockUser,
+        user: newUser,
       };
     }
   },
@@ -62,16 +87,62 @@ export const authService = {
       });
     } catch (err: any) {
       console.warn('[AuthService] Backend DB offline/unreachable. Providing local fallback session:', err);
-      const isDemoAdmin = data.email.toLowerCase().includes('admin');
+      const normalizedEmail = data.email.trim().toLowerCase();
+
+      // Check pre-seeded demo accounts
+      if (normalizedEmail === 'admin@careerguide.vn' || normalizedEmail.includes('admin')) {
+        const adminUser: User = {
+          id: 'admin_uuid_demo',
+          email: data.email,
+          full_name: 'Quản Trị Viên Kiểm Duyệt',
+          role: 'ADMIN',
+          created_at: new Date().toISOString(),
+        };
+        return {
+          access_token: 'demo_session_admin_' + Date.now(),
+          token_type: 'bearer',
+          user: adminUser,
+        };
+      }
+
+      if (normalizedEmail === 'hocsinh.genz@gmail.com') {
+        const demoStudent: User = {
+          id: 'student_uuid_demo',
+          email: data.email,
+          full_name: 'Nguyễn Văn Tuấn',
+          role: 'STUDENT',
+          created_at: new Date().toISOString(),
+        };
+        return {
+          access_token: 'demo_session_student_' + Date.now(),
+          token_type: 'bearer',
+          user: demoStudent,
+        };
+      }
+
+      // Check registered users in local registry
+      try {
+        const existingUsers = JSON.parse(localStorage.getItem('careerguide_local_users') || '{}');
+        if (existingUsers[normalizedEmail]) {
+          return {
+            access_token: 'session_token_' + Date.now(),
+            token_type: 'bearer',
+            user: existingUsers[normalizedEmail],
+          };
+        }
+      } catch {}
+
+      // Fallback for any other newly entered student email: generate dedicated isolated ID
+      const isolatedUserId = 'usr_' + Math.abs(normalizedEmail.split('').reduce((acc, char) => (acc << 5) - acc + char.charCodeAt(0), 0)).toString(36);
       const mockUser: User = {
-        id: isDemoAdmin ? 'admin_uuid_demo' : 'student_uuid_demo',
+        id: isolatedUserId,
         email: data.email,
-        full_name: isDemoAdmin ? 'Quản Trị Viên Kiểm Duyệt' : 'Học Sinh Demo',
-        role: isDemoAdmin ? 'ADMIN' : 'STUDENT',
+        full_name: 'Học Sinh',
+        role: 'STUDENT',
         created_at: new Date().toISOString(),
       };
       return {
-        access_token: 'demo_session_token_' + Date.now(),
+        access_token: 'session_token_' + Date.now(),
         token_type: 'bearer',
         user: mockUser,
       };
@@ -206,17 +277,17 @@ export const assessmentService = {
     }
   },
 
-  saveLocalDraft(answers: Record<string | number, number>, preferences: Record<string, string>) {
-    localStorage.setItem('careerguide_assessment_draft', JSON.stringify({ answers, preferences, saved_at: new Date().toISOString() }));
+  saveLocalDraft(answers: Record<string | number, number>, preferences: Record<string, string>, userId?: string | null) {
+    setScopedItem('assessment_draft', JSON.stringify({ answers, preferences, saved_at: new Date().toISOString() }), userId);
   },
 
-  getLocalDraft(): { answers: Record<string, number>; preferences: Record<string, string> } | null {
-    const draft = localStorage.getItem('careerguide_assessment_draft');
+  getLocalDraft(userId?: string | null): { answers: Record<string, number>; preferences: Record<string, string> } | null {
+    const draft = getScopedItem('assessment_draft', userId);
     return draft ? JSON.parse(draft) : null;
   },
 
-  clearDraft() {
-    localStorage.removeItem('careerguide_assessment_draft');
+  clearDraft(userId?: string | null) {
+    removeScopedItem('assessment_draft', userId);
   }
 };
 
@@ -1423,8 +1494,8 @@ export const taxonomyService = {
 // 6. RECOMMENDATION HISTORY & SAVED ROADMAP STORAGE
 // ==========================================
 export const recommendationHistoryService = {
-  getHistory(): RecommendationHistoryItem[] {
-    const raw = localStorage.getItem('careerguide_recommendation_history');
+  getHistory(userId?: string | null): RecommendationHistoryItem[] {
+    const raw = getScopedItem('recommendation_history', userId);
     if (!raw) return [];
     try {
       return JSON.parse(raw);
@@ -1432,26 +1503,26 @@ export const recommendationHistoryService = {
       return [];
     }
   },
-  addHistory(item: RecommendationHistoryItem) {
-    const history = this.getHistory();
+  addHistory(item: RecommendationHistoryItem, userId?: string | null) {
+    const history = this.getHistory(userId);
     const updated = [item, ...history.filter(h => h.id !== item.id)].slice(0, 15);
-    localStorage.setItem('careerguide_recommendation_history', JSON.stringify(updated));
+    setScopedItem('recommendation_history', JSON.stringify(updated), userId);
     window.dispatchEvent(new CustomEvent('careerguide_recommendation_history_updated'));
   },
-  deleteHistory(id: string) {
-    const history = this.getHistory().filter(h => h.id !== id);
-    localStorage.setItem('careerguide_recommendation_history', JSON.stringify(history));
+  deleteHistory(id: string, userId?: string | null) {
+    const history = this.getHistory(userId).filter(h => h.id !== id);
+    setScopedItem('recommendation_history', JSON.stringify(history), userId);
     window.dispatchEvent(new CustomEvent('careerguide_recommendation_history_updated'));
   },
-  clearHistory() {
-    localStorage.removeItem('careerguide_recommendation_history');
+  clearHistory(userId?: string | null) {
+    removeScopedItem('recommendation_history', userId);
     window.dispatchEvent(new CustomEvent('careerguide_recommendation_history_updated'));
   },
 };
 
 export const roadmapStorageService = {
-  getSavedRoadmaps(): SavedRoadmapItem[] {
-    const raw = localStorage.getItem('careerguide_saved_roadmaps');
+  getSavedRoadmaps(userId?: string | null): SavedRoadmapItem[] {
+    const raw = getScopedItem('saved_roadmaps', userId);
     if (!raw) return [];
     try {
       return JSON.parse(raw);
@@ -1459,8 +1530,8 @@ export const roadmapStorageService = {
       return [];
     }
   },
-  saveRoadmap(majorCode: string, majorName: string, categoryName: string, overallScore?: number, targetSkills?: string[]): SavedRoadmapItem {
-    const current = this.getSavedRoadmaps();
+  saveRoadmap(majorCode: string, majorName: string, categoryName: string, overallScore?: number, targetSkills?: string[], userId?: string | null): SavedRoadmapItem {
+    const current = this.getSavedRoadmaps(userId);
     const existing = current.find(r => r.major_code === majorCode);
     const resolvedSkills = (targetSkills && targetSkills.length > 0)
       ? targetSkills
@@ -1470,7 +1541,7 @@ export const roadmapStorageService = {
       existing.last_studied_at = new Date().toISOString();
       if (overallScore) existing.overall_score = overallScore;
       if (resolvedSkills.length > 0) existing.target_skills = resolvedSkills;
-      localStorage.setItem('careerguide_saved_roadmaps', JSON.stringify(current));
+      setScopedItem('saved_roadmaps', JSON.stringify(current), userId);
       window.dispatchEvent(new CustomEvent('careerguide_roadmaps_updated'));
       return existing;
     }
@@ -1488,24 +1559,24 @@ export const roadmapStorageService = {
       target_skills: resolvedSkills,
     };
     const updated = [newItem, ...current];
-    localStorage.setItem('careerguide_saved_roadmaps', JSON.stringify(updated));
+    setScopedItem('saved_roadmaps', JSON.stringify(updated), userId);
     window.dispatchEvent(new CustomEvent('careerguide_roadmaps_updated'));
     return newItem;
   },
-  updateProgress(majorCode: string, completedKeys: string[], progressPercent: number) {
-    const current = this.getSavedRoadmaps();
+  updateProgress(majorCode: string, completedKeys: string[], progressPercent: number, userId?: string | null) {
+    const current = this.getSavedRoadmaps(userId);
     const target = current.find(r => r.major_code === majorCode);
     if (target) {
       target.completed_action_keys = completedKeys;
       target.progress_percent = progressPercent;
       target.last_studied_at = new Date().toISOString();
-      localStorage.setItem('careerguide_saved_roadmaps', JSON.stringify(current));
+      setScopedItem('saved_roadmaps', JSON.stringify(current), userId);
       window.dispatchEvent(new CustomEvent('careerguide_roadmaps_updated'));
     }
   },
-  removeRoadmap(majorCode: string) {
-    const current = this.getSavedRoadmaps().filter(r => r.major_code !== majorCode);
-    localStorage.setItem('careerguide_saved_roadmaps', JSON.stringify(current));
+  removeRoadmap(majorCode: string, userId?: string | null) {
+    const current = this.getSavedRoadmaps(userId).filter(r => r.major_code !== majorCode);
+    setScopedItem('saved_roadmaps', JSON.stringify(current), userId);
     window.dispatchEvent(new CustomEvent('careerguide_roadmaps_updated'));
   },
 };

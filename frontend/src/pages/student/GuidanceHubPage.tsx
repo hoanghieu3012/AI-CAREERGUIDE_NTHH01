@@ -85,6 +85,11 @@ import {
   QAPersonaPreset,
   RIASECVector,
 } from '../../types';
+import {
+  getScopedItem,
+  setScopedItem,
+  removeScopedItem,
+} from '../../utils/userStorage';
 
 // Map icon names to Lucide icons
 const LUCIDE_ICONS: Record<string, React.ElementType> = {
@@ -145,7 +150,8 @@ const EMPTY_GRADES: SemesterGrades = {
 };
 
 export const GuidanceHubPage: React.FC = () => {
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
+  const userId = user?.id || null;
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -199,13 +205,37 @@ export const GuidanceHubPage: React.FC = () => {
   // STATE 2: ACADEMIC TRANSCRIPT & Z-SCORE
   // =========================================================================
   const [grades, setGrades] = useState<SemesterGrades>(() => {
-    const saved = localStorage.getItem('careerguide_student_grades');
+    const saved = getScopedItem('student_grades', userId);
     return saved ? JSON.parse(saved) : EMPTY_GRADES;
   });
 
   const [isGradesSaved, setIsGradesSaved] = useState<boolean>(() => {
-    return localStorage.getItem('careerguide_student_grades') !== null;
+    return getScopedItem('student_grades', userId) !== null;
   });
+
+  // Synchronize student grades and recommendation state when active user changes
+  useEffect(() => {
+    const saved = getScopedItem('student_grades', userId);
+    if (saved) {
+      try {
+        setGrades(JSON.parse(saved));
+        setIsGradesSaved(true);
+      } catch {
+        setGrades(EMPTY_GRADES);
+        setIsGradesSaved(false);
+      }
+    } else {
+      setGrades(EMPTY_GRADES);
+      setIsGradesSaved(false);
+    }
+
+    // Reset current recommendations view when switching users so no stale recs show
+    setHasCalculatedRecommendations(false);
+    setBroadFields([]);
+    setSelectedField(null);
+    setSelectedMajor(null);
+    setLastCalculatedInputsHash('');
+  }, [userId]);
 
   const [gradesNotice, setGradesNotice] = useState<string | null>(null);
 
@@ -230,7 +260,7 @@ export const GuidanceHubPage: React.FC = () => {
   };
 
   const handleSaveGrades = () => {
-    localStorage.setItem('careerguide_student_grades', JSON.stringify(grades));
+    setScopedItem('student_grades', JSON.stringify(grades), userId);
     setIsGradesSaved(true);
     setGradesNotice('Đã lưu thành công điểm học bạ THPT!');
     setTimeout(() => setGradesNotice(null), 3000);
@@ -239,7 +269,7 @@ export const GuidanceHubPage: React.FC = () => {
   const handleResetGrades = () => {
     setGrades(EMPTY_GRADES);
     setIsGradesSaved(false);
-    localStorage.removeItem('careerguide_student_grades');
+    removeScopedItem('student_grades', userId);
     setGradesNotice('Đã xóa dữ liệu bảng điểm học bạ.');
     setTimeout(() => setGradesNotice(null), 3000);
   };
@@ -254,7 +284,7 @@ export const GuidanceHubPage: React.FC = () => {
       preset = { math: 8.0, physics: 8.0, chemistry: 7.8, biology: 7.5, informatics: 8.2, literature: 8.0, history: 7.8, geography: 8.0, english: 8.2 };
     }
     setGrades(preset);
-    localStorage.setItem('careerguide_student_grades', JSON.stringify(preset));
+    setScopedItem('student_grades', JSON.stringify(preset), userId);
     setIsGradesSaved(true);
     setGradesNotice(`Đã áp dụng mẫu điểm: ${type === 'EXCELLENT_STEM' ? 'Học sinh Giỏi Tự nhiên (STEM)' : type === 'EXCELLENT_HUMANITIES' ? 'Học sinh Giỏi Xã hội & Ngoại ngữ' : 'Học sinh Khá - Giỏi toàn diện'}`);
     setTimeout(() => setGradesNotice(null), 3000);
@@ -322,17 +352,18 @@ export const GuidanceHubPage: React.FC = () => {
 
   // Recommendation History state
   const [historyList, setHistoryList] = useState<RecommendationHistoryItem[]>(() =>
-    recommendationHistoryService.getHistory()
+    recommendationHistoryService.getHistory(userId)
   );
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState<boolean>(false);
 
   useEffect(() => {
     const handleUpdateHistory = () => {
-      setHistoryList(recommendationHistoryService.getHistory());
+      setHistoryList(recommendationHistoryService.getHistory(userId));
     };
+    handleUpdateHistory();
     window.addEventListener('careerguide_recommendation_history_updated', handleUpdateHistory);
     return () => window.removeEventListener('careerguide_recommendation_history_updated', handleUpdateHistory);
-  }, []);
+  }, [userId]);
 
   const hasTestResults = Boolean(calculatedVector !== null);
   const hasTranscriptResults = hasAnyGrade;
@@ -409,7 +440,7 @@ export const GuidanceHubPage: React.FC = () => {
             })),
             full_broad_fields: fields,
           };
-          recommendationHistoryService.addHistory(historyItem);
+          recommendationHistoryService.addHistory(historyItem, userId);
           setHasCalculatedRecommendations(true);
         })
         .finally(() => {

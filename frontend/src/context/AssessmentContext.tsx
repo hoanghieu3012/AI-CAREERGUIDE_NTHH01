@@ -1,6 +1,12 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { RIASECVector, QAPersonaPreset, AssessmentSubmissionResult } from '../types';
 import { assessmentService } from '../services/careerServices';
+import { useAuth } from './AuthContext';
+import {
+  getScopedItem,
+  setScopedItem,
+  removeScopedItem,
+} from '../utils/userStorage';
 
 interface AssessmentContextType {
   riasecAnswers: Record<string, number>;
@@ -21,28 +27,31 @@ interface AssessmentContextType {
 const AssessmentContext = createContext<AssessmentContextType | undefined>(undefined);
 
 export const AssessmentProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
+  const userId = user?.id || null;
+
   const [riasecAnswers, setRiasecAnswers] = useState<Record<string, number>>(() => {
-    const draft = assessmentService.getLocalDraft();
+    const draft = assessmentService.getLocalDraft(userId);
     return (draft?.answers as Record<string, number>) || {};
   });
 
   const [cognitiveAnswers, setCognitiveAnswers] = useState<Record<string, string>>(() => {
-    const draft = assessmentService.getLocalDraft();
+    const draft = assessmentService.getLocalDraft(userId);
     return draft?.preferences || {};
   });
 
   const [calculatedVector, setCalculatedVector] = useState<RIASECVector | null>(() => {
-    const saved = localStorage.getItem('careerguide_calculated_vector');
+    const saved = getScopedItem('calculated_vector', userId);
     return saved ? JSON.parse(saved) : null;
   });
 
   const [dominantTraits, setDominantTraits] = useState<string[]>(() => {
-    const saved = localStorage.getItem('careerguide_dominant_traits');
+    const saved = getScopedItem('dominant_traits', userId);
     return saved ? JSON.parse(saved) : [];
   });
 
   const [isCompleted, setIsCompleted] = useState<boolean>(() => {
-    return localStorage.getItem('careerguide_assessment_completed') === 'true';
+    return getScopedItem('assessment_completed', userId) === 'true';
   });
 
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -54,13 +63,34 @@ export const AssessmentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return answeredCount * 25 + (isCompleted ? 200 : 0);
   });
 
-  // Auto-save draft on answers change
+  // Reactive reload whenever active user changes (login, logout, new registration)
+  useEffect(() => {
+    const draft = assessmentService.getLocalDraft(userId);
+    const loadedRiasec = (draft?.answers as Record<string, number>) || {};
+    const loadedCognitive = draft?.preferences || {};
+    setRiasecAnswers(loadedRiasec);
+    setCognitiveAnswers(loadedCognitive);
+
+    const savedVector = getScopedItem('calculated_vector', userId);
+    setCalculatedVector(savedVector ? JSON.parse(savedVector) : null);
+
+    const savedTraits = getScopedItem('dominant_traits', userId);
+    setDominantTraits(savedTraits ? JSON.parse(savedTraits) : []);
+
+    const savedCompleted = getScopedItem('assessment_completed', userId) === 'true';
+    setIsCompleted(savedCompleted);
+
+    const count = Object.keys(loadedRiasec).length + Object.keys(loadedCognitive).length;
+    setXpPoints(count * 25 + (savedCompleted ? 200 : 0));
+  }, [userId]);
+
+  // Auto-save draft on answers change (scoped per active user)
   useEffect(() => {
     if (answeredCount > 0) {
-      assessmentService.saveLocalDraft(riasecAnswers, cognitiveAnswers);
+      assessmentService.saveLocalDraft(riasecAnswers, cognitiveAnswers, userId);
     }
     setXpPoints(answeredCount * 25 + (isCompleted ? 200 : 0));
-  }, [riasecAnswers, cognitiveAnswers, answeredCount, isCompleted]);
+  }, [riasecAnswers, cognitiveAnswers, answeredCount, isCompleted, userId]);
 
   const setRiasecAnswer = (questionCode: string, value: number) => {
     setRiasecAnswers((prev) => ({
@@ -79,7 +109,7 @@ export const AssessmentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const applyQAPreset = (preset: QAPersonaPreset) => {
     setRiasecAnswers(preset.riasec_answers);
     setCognitiveAnswers(preset.cognitive_answers);
-    assessmentService.saveLocalDraft(preset.riasec_answers, preset.cognitive_answers);
+    assessmentService.saveLocalDraft(preset.riasec_answers, preset.cognitive_answers, userId);
   };
 
   const submitAssessment = async (): Promise<AssessmentSubmissionResult> => {
@@ -95,9 +125,9 @@ export const AssessmentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setDominantTraits(result.dominant_traits);
       setIsCompleted(true);
 
-      localStorage.setItem('careerguide_calculated_vector', JSON.stringify(result.riasec_vector));
-      localStorage.setItem('careerguide_dominant_traits', JSON.stringify(result.dominant_traits));
-      localStorage.setItem('careerguide_assessment_completed', 'true');
+      setScopedItem('calculated_vector', JSON.stringify(result.riasec_vector), userId);
+      setScopedItem('dominant_traits', JSON.stringify(result.dominant_traits), userId);
+      setScopedItem('assessment_completed', 'true', userId);
       setXpPoints((prev) => prev + 200);
 
       return result;
@@ -113,10 +143,10 @@ export const AssessmentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setDominantTraits([]);
     setIsCompleted(false);
     setXpPoints(0);
-    assessmentService.clearDraft();
-    localStorage.removeItem('careerguide_calculated_vector');
-    localStorage.removeItem('careerguide_dominant_traits');
-    localStorage.removeItem('careerguide_assessment_completed');
+    assessmentService.clearDraft(userId);
+    removeScopedItem('calculated_vector', userId);
+    removeScopedItem('dominant_traits', userId);
+    removeScopedItem('assessment_completed', userId);
   };
 
   return (
