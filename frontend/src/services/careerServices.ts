@@ -255,40 +255,157 @@ export const recommendationService = {
       C: 'Conventional (Nghiệp vụ)',
     };
 
-    // Trait mapping to 2-digit MOET field codes (Circular 74/2026/TT-BGDĐT)
-    const traitMoetMap: Record<string, string[]> = {
-      LEARN_VISUAL_SPATIAL: ['21', '58'],
-      LEARN_AUDITORY: ['22', '32'],
-      LEARN_KINESTHETIC: ['51', '52', '64', '72'],
-      LEARN_READ_WRITE: ['38', '46', '48'],
-      ENV_DYNAMIC_CORPORATE: ['34'],
-      ENV_RESEARCH_LAB: ['42', '44', '72'],
-      ENV_OUTDOOR_FIELD: ['54', '62', '84'],
-      ENV_STRUCTURED_OFFICE: ['38', '48', '34'],
-      PROB_ANALYTICAL_MATH: ['46', '48', '51'],
-      PROB_CREATIVE_INTUITIVE: ['21', '32'],
-      PROB_SOCIAL_COLLABORATIVE: ['14', '76'],
-      PROB_SYSTEMATIC_PROCESS: ['34', '52'],
-      INT_OBJECT_MACHINE: ['51', '52'],
-      INT_PEOPLE_EMPATHY: ['14', '72', '76'],
-      INT_DATA_ALGORITHM: ['46', '48'],
-      INT_IDEA_CONCEPT: ['22', '31'],
-      GARD_LOGICAL_MATH: ['46', '48', '51'],
-      GARD_VERBAL_LINGUISTIC: ['22', '32', '38'],
-      GARD_SPATIAL: ['21', '58'],
-      GARD_INTERPERSONAL: ['14', '34', '76'],
-      PRES_HIGH_COMPETITIVE: ['34'],
-      PRES_STRUCTURED_STABLE: ['14', '38'],
-      PRES_FLEXIBLE_AUTONOMOUS: ['21', '48'],
-      PRES_DEADLINE_PROJECT: ['51', '58'],
-      OUT_PHYSICAL_PRODUCT: ['51', '52', '54'],
-      OUT_DIGITAL_SOFTWARE: ['48'],
-      OUT_SOCIAL_IMPACT: ['14', '72', '76'],
-      OUT_CREATIVE_CONTENT: ['21', '32'],
-      ROLE_LEADER_VISION: ['34'],
-      ROLE_EXPERT_SPECIALIST: ['46', '48', '72'],
-      ROLE_FACILITATOR_HARMONY: ['14', '76'],
-      ROLE_OPERATOR_EXECUTOR: ['51', '52'],
+    // Circular 74/2026/TT-BGDĐT Cognitive Questions & Options mapping to 2-digit MOET Field Codes
+    const COGNITIVE_OPTION_MOET_MAP: Record<string, Record<string, string[]>> = {
+      COG_1: {
+        A: ['21', '58', '32', '44', '46', '48', '72'],
+        B: ['46', '48', '44', '31', '38', '21', '58'],
+        C: ['51', '52', '54', '62', '64', '72', '14', '22', '38'],
+        D: ['14', '22', '34', '38', '76', '81', '51', '52', '64'],
+      },
+      learning_style: {
+        A: ['21', '58', '32', '44', '46', '48', '72'],
+        B: ['46', '48', '44', '31', '38', '21', '58'],
+        C: ['51', '52', '54', '62', '64', '72', '14', '22', '38'],
+        D: ['14', '22', '34', '38', '76', '81', '51', '52', '64'],
+      },
+      information_processing: {
+        A: ['46', '48', '72'],
+        B: ['21', '58'],
+        C: ['14', '22', '38'],
+        D: ['51', '52', '64'],
+      },
+      COG_2: {
+        A: ['42', '44', '46', '48', '21'],
+        B: ['32', '34', '81', '14'],
+        C: ['51', '52', '58', '62', '84', '85', '86', '38'],
+        D: ['14', '38', '72', '76', '21', '48'],
+      },
+      work_environment: {
+        A: ['42', '44', '46', '48', '21'],
+        B: ['32', '34', '81', '14'],
+        C: ['51', '52', '58', '62', '84', '85', '86', '38'],
+        D: ['14', '38', '72', '76', '21', '48'],
+      },
+      learning_environment: {
+        A: ['46', '48'],
+        B: ['34', '14'],
+        C: ['38', '34'],
+        D: ['21', '48'],
+      },
+      COG_3: {
+        A: ['44', '46', '48', '52'],
+        B: ['21', '22', '32', '58'],
+        C: ['14', '31', '72', '76', '81'],
+        D: ['34', '38', '51', '84', '85'],
+      },
+      problem_solving: {
+        A: ['44', '46', '48', '52'],
+        B: ['21', '22', '32', '58'],
+        C: ['14', '31', '72', '76', '81'],
+        D: ['34', '38', '51', '84', '85'],
+      },
+      COG_4: {
+        A: ['48', '51', '52', '58'],
+        B: ['31', '34', '38', '46'],
+        C: ['14', '22', '32', '72', '76', '81'],
+        D: ['21', '42', '44', '54', '62', '64', '85'],
+      },
+      interaction_target: {
+        A: ['48', '51', '52', '58'],
+        B: ['31', '34', '38', '46'],
+        C: ['14', '22', '32', '72', '76', '81'],
+        D: ['21', '42', '44', '54', '62', '64', '85'],
+      },
+      COG_5: {
+        A: ['34', '44', '46', '48', '52'],
+        B: ['14', '22', '31', '32', '38', '76', '81'],
+        C: ['21', '58'],
+        D: ['42', '51', '54', '62', '64', '72', '85', '86'],
+      },
+      gardner_intelligence: {
+        A: ['34', '44', '46', '48', '52'],
+        B: ['14', '22', '31', '32', '38', '76', '81'],
+        C: ['21', '58'],
+        D: ['42', '51', '54', '62', '64', '72', '85', '86'],
+      },
+      COG_6: {
+        A: ['72', '84', '86'],
+        B: ['32', '34', '38', '81'],
+        C: ['21', '42', '44', '46', '48', '52', '58'],
+        D: ['14', '22', '31', '51', '54', '62', '64', '76', '85'],
+      },
+      pressure_tolerance: {
+        A: ['72', '84', '86'],
+        B: ['32', '34', '38', '81'],
+        C: ['21', '42', '44', '46', '48', '52', '58'],
+        D: ['14', '22', '31', '51', '54', '62', '64', '76', '85'],
+      },
+      COG_7: {
+        A: ['48', '51', '52', '54', '58'],
+        B: ['31', '34', '38', '84'],
+        C: ['14', '62', '64', '72', '76', '81', '85', '86'],
+        D: ['21', '22', '32', '42', '44', '46'],
+      },
+      output_preference: {
+        A: ['48', '51', '52', '54', '58'],
+        B: ['31', '34', '38', '84'],
+        C: ['14', '62', '64', '72', '76', '81', '85', '86'],
+        D: ['21', '22', '32', '42', '44', '46'],
+      },
+      COG_8: {
+        A: ['42', '44', '46', '48', '51', '52'],
+        B: ['31', '34', '38', '86'],
+        C: ['14', '21', '22', '32', '58', '76', '81'],
+        D: ['34', '54', '62', '64', '72', '84', '85'],
+      },
+      team_role: {
+        A: ['42', '44', '46', '48', '51', '52'],
+        B: ['31', '34', '38', '86'],
+        C: ['14', '21', '22', '32', '58', '76', '81'],
+        D: ['34', '54', '62', '64', '72', '84', '85'],
+      },
+    };
+
+    const TRAIT_CODE_MOET_MAP: Record<string, string[]> = {
+      LEARN_THEORETICAL_ANALYTICAL: ['46', '48', '44', '31', '38'],
+      COG_TRAIT_ANALYTICAL: ['46', '48', '72'],
+      ENV_LAB_DIGITAL_QUIET: ['42', '44', '46', '48', '21'],
+      COG_TRAIT_INDEPENDENT: ['46', '48'],
+      SOLVE_QUANTITATIVE_LOGIC: ['44', '46', '48', '52'],
+      TARGET_SYSTEMS_MACHINES: ['48', '51', '52', '58'],
+      GARDNER_LOGICAL_MATH: ['34', '44', '46', '48', '52'],
+      PRESSURE_DEEP_RND_COMPLEXITY: ['21', '42', '44', '46', '48', '52', '58'],
+      OUTPUT_TANGIBLE_TECH_SYSTEM: ['48', '51', '52', '54', '58'],
+      ROLE_TECHNICAL_SPECIALIST: ['42', '44', '46', '48', '51', '52'],
+      LEARN_VISUAL_SPATIAL: ['21', '58', '32', '44'],
+      COG_TRAIT_VISUAL: ['21', '58'],
+      SOLVE_CREATIVE_DIVERGENT: ['21', '22', '32', '58'],
+      GARDNER_SPATIAL_MUSICAL: ['21', '58'],
+      OUTPUT_CREATIVE_SCIENTIFIC_WORK: ['21', '22', '32', '42', '44', '46'],
+      ROLE_CREATIVE_COMMUNICATOR: ['14', '21', '22', '32', '58', '76', '81'],
+      LEARN_INTERACTIVE_CASE: ['14', '22', '34', '38', '76', '81'],
+      COG_TRAIT_VERBAL: ['14', '22', '38'],
+      ENV_INSTITUTIONAL_SERVICE: ['14', '38', '72', '76'],
+      COG_TRAIT_COLLABORATIVE: ['34', '14'],
+      SOLVE_HUMAN_EMPATHY: ['14', '31', '72', '76', '81'],
+      TARGET_PEOPLE_COMMUNITY: ['14', '22', '32', '72', '76', '81'],
+      GARDNER_LINGUISTIC_INTERPERSONAL: ['14', '22', '31', '32', '38', '76', '81'],
+      PRESSURE_STABLE_SUSTAINABLE: ['14', '22', '31', '51', '54', '62', '64', '76', '85'],
+      OUTPUT_HUMAN_WELLBEING: ['14', '62', '64', '72', '76', '81', '85', '86'],
+      LEARN_HANDS_ON_PRACTICAL: ['51', '52', '54', '62', '64', '72'],
+      COG_TRAIT_KINESTHETIC: ['51', '52', '64'],
+      ENV_FIELD_INDUSTRIAL: ['51', '52', '58', '62', '84', '85', '86'],
+      GARDNER_NATURALIST_KINESTHETIC: ['42', '51', '54', '62', '64', '72', '85', '86'],
+      TARGET_NATURE_BIO_ART: ['21', '42', '44', '54', '62', '64', '85'],
+      ENV_DYNAMIC_CORPORATE: ['32', '34', '81'],
+      COG_TRAIT_STRUCTURED: ['38', '34'],
+      SOLVE_PROCEDURAL_STRATEGIC: ['34', '38', '51', '84', '85'],
+      TARGET_DATA_FINANCE_LAW: ['31', '34', '38', '46'],
+      PRESSURE_MARKET_DEADLINE: ['32', '34', '38', '81'],
+      OUTPUT_ECONOMIC_LEGAL_VALUE: ['31', '34', '38', '84'],
+      ROLE_STRATEGIC_LEADER: ['31', '34', '38', '86'],
+      ROLE_QUALITY_CONTROLLER: ['34', '54', '62', '64', '72', '84', '85'],
     };
 
     // Calculate score for each major
@@ -314,20 +431,59 @@ export const recommendationService = {
         academicScore = Math.min(99, Math.round((blockTotal / 10) * 100));
       }
 
-      // Calculate Cognitive Preference score (20% weight)
-      let preferenceScore = 70;
+      // Calculate Cognitive Preference score (20% weight) with Circular 74 mapping
+      let preferenceScore = 65;
       if (cognitiveAnswers && Object.keys(cognitiveAnswers).length > 0) {
         const moetField = m.major_code.substring(1, 3);
         let matchCount = 0;
-        for (const val of Object.values(cognitiveAnswers)) {
-          const related = traitMoetMap[val] || [];
-          if (related.includes(moetField)) {
-            matchCount++;
+        const countedQuestions = new Set<string>();
+
+        const DIM_TO_COG: Record<string, string> = {
+          learning_style: 'COG_1',
+          information_processing: 'COG_1',
+          work_environment: 'COG_2',
+          learning_environment: 'COG_2',
+          problem_solving: 'COG_3',
+          interaction_target: 'COG_4',
+          gardner_intelligence: 'COG_5',
+          pressure_tolerance: 'COG_6',
+          output_preference: 'COG_7',
+          team_role: 'COG_8',
+        };
+
+        for (const [rawKey, rawVal] of Object.entries(cognitiveAnswers)) {
+          const key = rawKey.trim();
+          const val = String(rawVal).trim().toUpperCase();
+          const normKey = DIM_TO_COG[key] || (key.startsWith('COG_') ? key : key);
+
+          if (countedQuestions.has(normKey)) continue;
+
+          const qMap = COGNITIVE_OPTION_MOET_MAP[key] || COGNITIVE_OPTION_MOET_MAP[normKey];
+          if (qMap && qMap[val]) {
+            countedQuestions.add(normKey);
+            if (qMap[val].includes(moetField)) {
+              matchCount++;
+            }
+          } else if (TRAIT_CODE_MOET_MAP[val]) {
+            countedQuestions.add(normKey);
+            if (TRAIT_CODE_MOET_MAP[val].includes(moetField)) {
+              matchCount++;
+            }
           }
         }
-        if (matchCount >= 2) preferenceScore = 95;
-        else if (matchCount === 1) preferenceScore = 85;
-        else preferenceScore = 65;
+
+        // Graded score based on matched cognitive traits:
+        if (matchCount >= 4) {
+          preferenceScore = 98;
+        } else if (matchCount === 3) {
+          preferenceScore = 92;
+        } else if (matchCount === 2) {
+          preferenceScore = 85;
+        } else if (matchCount === 1) {
+          preferenceScore = 75;
+        } else {
+          preferenceScore = 55;
+        }
       }
 
       const overall = Math.round(riasecScore * 0.45 + academicScore * 0.35 + preferenceScore * 0.20);
@@ -427,6 +583,12 @@ export const recommendationService = {
             factor_title: `Tổ hợp xét tuyển tối ưu: ${m.blocks.slice(0, 3).join(', ')}`,
             factor_description: 'Năng lực học tập chuẩn hóa Z-score đạt ngưỡng an toàn cho nhóm ngành tuyển sinh.',
             contribution_score: Number((academicScore * 0.35).toFixed(1)),
+          },
+          {
+            factor_type: 'PREFERENCE',
+            factor_title: `Thiên hướng nhận thức: ${preferenceScore >= 85 ? 'Rất tương thích' : preferenceScore >= 70 ? 'Phù hợp' : 'Cần thích nghi'}`,
+            factor_description: `Đặc điểm phong cách tư duy & môi trường làm việc đạt ${preferenceScore}% mức độ tương thích với ngành ${m.name}.`,
+            contribution_score: Number((preferenceScore * 0.20).toFixed(1)),
           },
         ],
         missing_skills: gaps,

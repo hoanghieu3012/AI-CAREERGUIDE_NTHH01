@@ -337,6 +337,17 @@ export const GuidanceHubPage: React.FC = () => {
   const hasTestResults = Boolean(calculatedVector !== null);
   const hasTranscriptResults = hasAnyGrade;
 
+  // Hash current assessment & transcript inputs to detect changes
+  const currentInputsHash = useMemo(() => {
+    return JSON.stringify({
+      v: calculatedVector,
+      c: cognitiveAnswers,
+      g: grades,
+    });
+  }, [calculatedVector, cognitiveAnswers, grades]);
+
+  const [lastCalculatedInputsHash, setLastCalculatedInputsHash] = useState<string>('');
+
   // Synchronize state: if student has not completed test, ensure recommendations cannot be displayed from fallback
   useEffect(() => {
     if (!calculatedVector && hasCalculatedRecommendations) {
@@ -352,6 +363,7 @@ export const GuidanceHubPage: React.FC = () => {
     setBroadFields([]);
     setSelectedField(null);
     setSelectedMajor(null);
+    setLastCalculatedInputsHash('');
   };
 
   const handleTriggerRecommendations = () => {
@@ -381,6 +393,8 @@ export const GuidanceHubPage: React.FC = () => {
             }
           }
 
+          setLastCalculatedInputsHash(currentInputsHash);
+
           // Save to Recommendation History
           const historyItem: RecommendationHistoryItem = {
             id: 'hist_' + Date.now(),
@@ -403,6 +417,18 @@ export const GuidanceHubPage: React.FC = () => {
         });
     }, 450);
   };
+
+  // Auto-refresh recommendations when inputs change (cognitive answers or grades) and recommendations are already active
+  useEffect(() => {
+    if (
+      hasCalculatedRecommendations &&
+      calculatedVector &&
+      lastCalculatedInputsHash &&
+      currentInputsHash !== lastCalculatedInputsHash
+    ) {
+      handleTriggerRecommendations();
+    }
+  }, [currentInputsHash, hasCalculatedRecommendations, calculatedVector, lastCalculatedInputsHash]);
 
   const handleRestoreHistoryItem = (item: RecommendationHistoryItem) => {
     setBroadFields(item.full_broad_fields);
@@ -474,6 +500,9 @@ export const GuidanceHubPage: React.FC = () => {
   const handleFinalSubmitAssessment = async () => {
     await submitAssessment();
     setAssessmentStep(7);
+    if (hasCalculatedRecommendations) {
+      handleTriggerRecommendations();
+    }
   };
 
   return (
