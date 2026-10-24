@@ -326,4 +326,25 @@ export interface AssessmentSubmissionResult {
   summary: string;
   completed_at: string;
 }
+export interface MajorItem {
+  id?: string;
+  major_code: string;
+  name: string;
+  category: string;
+  degree_level?: string;
+  blocks: string[];
+  careers: string[];
+  riasec: {
+    R: number;
+    I: number;
+    A: number;
+    S: number;
+    E: number;
+    C: number;
+  };
+  cognitive?: Record<string, string>;
+  outlook: string;
+  description?: string;
+  is_active?: boolean;
+}
 

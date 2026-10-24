@@ -1,5 +1,8 @@
+import json
+import logging
 import uuid
-from typing import List, Optional
+from pathlib import Path
+from typing import List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -13,22 +16,96 @@ from app.models.taxonomy import (
     MajorSkill,
 )
 
+logger = logging.getLogger(__name__)
+
+
+def load_seed_majors() -> List[dict]:
+    """Loads standardized 108 MOET Level-IV majors from seed JSON."""
+    seed_path = Path(__file__).resolve().parent.parent.parent / "db" / "seeds" / "moet_taxonomy_tt09.json"
+    if seed_path.exists():
+        with open(seed_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
+
+
+def format_major_dict(major: Major) -> Dict[str, Any]:
+    """Formats a Major ORM entity into a standardized frontend & API response dictionary."""
+    blocks: List[str] = []
+    if hasattr(major, "subject_blocks") and major.subject_blocks:
+        blocks = [
+            msb.subject_block.block_code
+            for msb in major.subject_blocks
+            if getattr(msb, "subject_block", None) is not None
+        ]
+
+    careers: List[str] = []
+    if hasattr(major, "careers") and major.careers:
+        careers = [c.title for c in major.careers if getattr(c, "title", None)]
+
+    rv = major.riasec_vector or {}
+    cog = major.cognitive_attributes or {}
+    outlook = major.industry_outlook or ""
+
+    return {
+        "id": major.id,
+        "major_code": major.major_code,
+        "name": major.name,
+        "category": getattr(major, "category", "Khác") or "Khác",
+        "degree_level": major.degree_level or "Đại học",
+        "blocks": blocks,
+        "careers": careers,
+        "riasec": rv,
+        "cognitive": cog,
+        "outlook": outlook,
+        "riasec_vector": rv,
+        "cognitive_attributes": cog,
+        "industry_outlook": outlook,
+        "description": major.description,
+        "is_active": major.is_active,
+    }
+
 
 async def list_majors(
     db: AsyncSession,
     search: Optional[str] = None,
-    limit: int = 100,
+    category: Optional[str] = None,
+    limit: int = 250,
     offset: int = 0
-) -> List[Major]:
-    query = select(Major).where(Major.is_active == True)
+) -> List[Dict[str, Any]]:
+    """
+    Retrieves MOET Level-IV majors catalog from PostgreSQL.
+    Automatically self-heals and seeds the 108 majors from seed JSON if table is empty.
+    """
+    query = (
+        select(Major)
+        .where(Major.is_active == True)
+        .options(
+            selectinload(Major.careers),
+            selectinload(Major.subject_blocks).selectinload(MajorSubjectBlock.subject_block),
+        )
+    )
     if search:
         query = query.where(Major.name.ilike(f"%{search}%") | Major.major_code.ilike(f"%{search}%"))
+    if category and category.upper() != "ALL":
+        query = query.where(Major.category == category)
+
     query = query.order_by(Major.major_code.asc()).limit(limit).offset(offset)
     result = await db.execute(query)
-    return list(result.scalars().all())
+    majors = list(result.scalars().all())
+
+    # Auto-seed if database table is completely empty
+    if len(majors) == 0 and not search and not category:
+        seed_data = load_seed_majors()
+        if seed_data:
+            logger.info("Majors table empty. Auto-seeding 108 MOET Level-IV majors into PostgreSQL...")
+            await bulk_sync_majors(db, seed_data)
+            result = await db.execute(query)
+            majors = list(result.scalars().all())
+
+    return [format_major_dict(m) for m in majors]
 
 
-async def get_major_by_code(db: AsyncSession, major_code: str) -> Optional[Major]:
+async def get_major_by_code(db: AsyncSession, major_code: str) -> Optional[Dict[str, Any]]:
     query = (
         select(Major)
         .where(Major.major_code == major_code)
@@ -39,7 +116,10 @@ async def get_major_by_code(db: AsyncSession, major_code: str) -> Optional[Major
         )
     )
     result = await db.execute(query)
-    return result.scalar_one_or_none()
+    major = result.scalar_one_or_none()
+    if not major:
+        return None
+    return format_major_dict(major)
 
 
 async def list_subject_blocks(db: AsyncSession) -> List[SubjectBlock]:
@@ -71,33 +151,75 @@ async def bulk_sync_majors(db: AsyncSession, majors_data: List[dict]) -> dict:
     """
     Syncs or updates MOET Level-IV majors catalog into PostgreSQL.
     Guarantees idempotency and 100% pure guidance scope compliance.
+    Persists category, subject blocks, and careers relationships.
     """
     inserted_count = 0
     updated_count = 0
+
+    # Cache existing subject blocks
+    sb_result = await db.execute(select(SubjectBlock))
+    block_map = {b.block_code: b for b in sb_result.scalars().all()}
+
     for item in majors_data:
         code = item["major_code"]
-        existing = await db.execute(select(Major).where(Major.major_code == code))
+        existing = await db.execute(
+            select(Major)
+            .where(Major.major_code == code)
+            .options(
+                selectinload(Major.careers),
+                selectinload(Major.subject_blocks)
+            )
+        )
         major_obj = existing.scalar_one_or_none()
+
         if major_obj:
             major_obj.name = item["name"]
-            major_obj.riasec_vector = item["riasec"]
-            major_obj.cognitive_attributes = item.get("cognitive", {})
-            major_obj.industry_outlook = item.get("outlook", "")
+            major_obj.category = item.get("category", getattr(major_obj, "category", "Khác"))
+            major_obj.riasec_vector = item.get("riasec", major_obj.riasec_vector)
+            major_obj.cognitive_attributes = item.get("cognitive", major_obj.cognitive_attributes)
+            major_obj.industry_outlook = item.get("outlook", major_obj.industry_outlook)
             updated_count += 1
         else:
-            new_major = Major(
+            major_obj = Major(
                 id=uuid.uuid4(),
                 major_code=code,
                 name=item["name"],
+                category=item.get("category", "Khác"),
                 degree_level="Đại học",
-                riasec_vector=item["riasec"],
+                riasec_vector=item.get("riasec", {}),
                 cognitive_attributes=item.get("cognitive", {}),
                 industry_outlook=item.get("outlook", ""),
                 is_active=True
             )
-            db.add(new_major)
+            db.add(major_obj)
+            await db.flush()
             inserted_count += 1
-            
+
+        # Link subject blocks if provided
+        existing_block_ids = {msb.subject_block_id for msb in (major_obj.subject_blocks or [])}
+        for b_code in item.get("blocks", []):
+            if b_code in block_map and block_map[b_code].id not in existing_block_ids:
+                msb = MajorSubjectBlock(
+                    major_id=major_obj.id,
+                    subject_block_id=block_map[b_code].id,
+                    weight=1.0
+                )
+                db.add(msb)
+
+        # Link careers if provided
+        existing_career_titles = {c.title for c in (major_obj.careers or [])}
+        for c_title in item.get("careers", []):
+            if c_title not in existing_career_titles:
+                c = Career(
+                    id=uuid.uuid4(),
+                    major_id=major_obj.id,
+                    title=c_title,
+                    career_tree_level="Lá - Nghề nghiệp cụ thể",
+                    description=f"Vị trí công việc thực tế trong thị trường lao động thuộc ngành {major_obj.name}",
+                    responsibilities=["Thực hiện các nghiệp vụ chuyên môn"]
+                )
+                db.add(c)
+
     await db.commit()
     return {
         "status": "success",
@@ -105,4 +227,3 @@ async def bulk_sync_majors(db: AsyncSession, majors_data: List[dict]) -> dict:
         "updated": updated_count,
         "total": len(majors_data)
     }
-

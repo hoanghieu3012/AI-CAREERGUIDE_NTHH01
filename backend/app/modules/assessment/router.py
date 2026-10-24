@@ -53,3 +53,23 @@ async def submit_assessment(
     # Demo/Fallback user id if unauthenticated or offline
     mock_user_id = uuid.uuid4()
     return await service.process_assessment_submission(db, mock_user_id, payload)
+
+
+@router.post(
+    "/seed",
+    status_code=status.HTTP_200_OK,
+    summary="Nạp bộ câu hỏi khảo sát Circular 74/2026/TT-BGDĐT v1.8 vào CSDL PostgreSQL"
+)
+async def seed_questions_endpoint(
+    db: AsyncSession = Depends(get_db)
+):
+    """Admin / Setup endpoint to seed the assessment questionnaire into PostgreSQL."""
+    from app.db.seeds.seed_assessment_questions import seed_assessment_questions
+    q_set = await seed_assessment_questions(db)
+    return {
+        "status": "success",
+        "set_id": str(q_set.id),
+        "set_code": q_set.set_code,
+        "version": q_set.version,
+        "message": "Bộ câu hỏi khảo sát đã được nạp và lưu vào CSDL PostgreSQL thành công!"
+    }

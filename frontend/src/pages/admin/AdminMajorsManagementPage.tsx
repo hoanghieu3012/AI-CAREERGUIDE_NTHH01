@@ -28,8 +28,8 @@ export const AdminMajorsManagementPage: React.FC = () => {
     return () => window.removeEventListener('careerguide_taxonomy_updated', handleUpdate);
   }, []);
 
-  const loadMajors = () => {
-    const list = taxonomyService.getMajors();
+  const loadMajors = async () => {
+    const list = await taxonomyService.fetchMajors();
     setMajors(list);
   };
 
@@ -41,8 +41,8 @@ export const AdminMajorsManagementPage: React.FC = () => {
   };
 
   const handleSyncAll108 = async () => {
-    const all = taxonomyService.getAllOfficialMoetMajors();
-    await taxonomyService.publishExtractedMajors(all);
+    setActionNotice('?ang ??ng b? d? li?u tr?c ti?p t? CSDL PostgreSQL...');
+    const all = await taxonomyService.syncFromDatabase();
     setMajors(all);
     setActionNotice('Đã đồng bộ toàn bộ 108 ngành cấp IV theo Thông tư 09/2022/TT-BGDĐT!');
     setTimeout(() => setActionNotice(null), 4000);

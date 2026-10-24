@@ -31,6 +31,7 @@ class MajorBase(BaseModel):
         description="Official Level-IV major code from MOET Circular 09/2022/TT-BGDĐT"
     )
     name: str = Field(min_length=2, max_length=255)
+    category: str = Field(default="Kh?c", description="Category according to Circular 09/2022/TT-BGD?T")
     degree_level: str = Field(default="Đại học")
     riasec_vector: RIASECVectorSchema
     cognitive_attributes: CognitiveAttributesSchema
@@ -90,10 +91,32 @@ class SkillSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class MajorItemResponse(BaseModel):
+    id: Optional[uuid.UUID] = None
+    major_code: str
+    name: str
+    category: str = "Kh?c"
+    degree_level: str = "??i h?c"
+    blocks: List[str] = []
+    careers: List[str] = []
+    riasec: Dict[str, float] = {}
+    cognitive: Dict[str, Any] = {}
+    outlook: str = ""
+    riasec_vector: Optional[Dict[str, float]] = None
+    cognitive_attributes: Optional[Dict[str, Any]] = None
+    industry_outlook: Optional[str] = None
+    description: Optional[str] = None
+    is_active: bool = True
+
+    model_config = ConfigDict(from_attributes=True, extra="allow")
+
+
 class MajorResponse(MajorBase):
     id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    category: str = "Kh?c"
+    blocks: Optional[List[str]] = []
     careers: Optional[List[CareerSummary]] = []
     
     model_config = ConfigDict(from_attributes=True)

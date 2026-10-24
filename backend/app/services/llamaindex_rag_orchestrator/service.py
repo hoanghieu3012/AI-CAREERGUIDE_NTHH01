@@ -41,6 +41,13 @@ from app.services.llamaindex_rag_orchestrator.guidance_rag import (
 )
 
 
+def compute_content_sha256(content: str | bytes) -> str:
+    """Computes SHA-256 checksum for string or binary content to guarantee deduplication."""
+    if isinstance(content, str):
+        content = content.encode("utf-8")
+    return compute_bytes_sha256(content)
+
+
 async def create_staging_entry(
     db: AsyncSession,
     payload: StagingRecordCreate

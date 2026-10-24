@@ -46,8 +46,8 @@ export const TaxonomyPage: React.FC = () => {
     return () => window.removeEventListener('careerguide_taxonomy_updated', handleUpdate);
   }, []);
 
-  const loadMajors = () => {
-    const list = taxonomyService.getMajors();
+  const loadMajors = async () => {
+    const list = await taxonomyService.fetchMajors();
     setMajorsList(list);
   };
 

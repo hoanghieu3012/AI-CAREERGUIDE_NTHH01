@@ -1076,33 +1076,75 @@ export const adminService = {
 // ==========================================
 
 export const taxonomyService = {
+  _cachedMajors: null as MajorItem[] | null,
+
+  async fetchMajors(forceRefresh = false): Promise<MajorItem[]> {
+    if (!forceRefresh && this._cachedMajors && this._cachedMajors.length > 0) {
+      return this._cachedMajors;
+    }
+    try {
+      const data = await apiRequest<MajorItem[]>('/taxonomy/majors?limit=250');
+      if (Array.isArray(data) && data.length > 0) {
+        this._cachedMajors = data;
+        localStorage.setItem('careerguide_published_majors', JSON.stringify(data));
+        return data;
+      }
+    } catch (err) {
+      console.warn('[taxonomyService] Backend CSDL offline/unreachable, using local cache:', err);
+    }
+    return this.getMajors();
+  },
+
   getMajors(): MajorItem[] {
+    if (this._cachedMajors && this._cachedMajors.length > 0) {
+      return this._cachedMajors;
+    }
     const saved = localStorage.getItem('careerguide_published_majors');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
+          this._cachedMajors = parsed;
           return parsed;
         }
       } catch (e) {
         console.error('Failed to parse published majors from localStorage', e);
       }
     }
+    // Background async fetch from CSDL
+    this.fetchMajors().catch(() => {});
     return INITIAL_SIX_MAJORS;
   },
 
   getAllOfficialMoetMajors(): MajorItem[] {
-    return OFFICIAL_MOET_MAJORS;
+    const list = this.getMajors();
+    if (list.length >= 100) return list;
+    this.fetchMajors().catch(() => {});
+    return list;
   },
 
   getMajorByCode(code: string): MajorItem | undefined {
     const list = this.getMajors();
-    const found = list.find((m) => m.major_code === code);
-    if (found) return found;
-    return OFFICIAL_MOET_MAJORS.find((m) => m.major_code === code);
+    return list.find((m) => m.major_code === code);
+  },
+
+  async syncFromDatabase(): Promise<MajorItem[]> {
+    try {
+      await apiRequest('/taxonomy/sync-tt09', { method: 'POST' });
+    } catch (e) {
+      console.warn('Sync endpoint error, will still fetch from CSDL:', e);
+    }
+    const fresh = await this.fetchMajors(true);
+    window.dispatchEvent(
+      new CustomEvent('careerguide_taxonomy_updated', {
+        detail: { count: fresh.length },
+      })
+    );
+    return fresh;
   },
 
   async publishExtractedMajors(majors: MajorItem[]): Promise<{ count: number }> {
+    this._cachedMajors = majors;
     localStorage.setItem('careerguide_published_majors', JSON.stringify(majors));
     window.dispatchEvent(
       new CustomEvent('careerguide_taxonomy_updated', {
@@ -1110,7 +1152,7 @@ export const taxonomyService = {
       })
     );
 
-    // Also trigger backend sync if DB is accessible
+    // Sync to PostgreSQL CSDL
     try {
       await apiRequest('/taxonomy/sync-tt09', { method: 'POST' });
     } catch (e) {
@@ -1120,6 +1162,7 @@ export const taxonomyService = {
   },
 
   resetToInitial(): MajorItem[] {
+    this._cachedMajors = INITIAL_SIX_MAJORS;
     localStorage.setItem('careerguide_published_majors', JSON.stringify(INITIAL_SIX_MAJORS));
     window.dispatchEvent(
       new CustomEvent('careerguide_taxonomy_updated', {
@@ -1136,7 +1179,6 @@ export const taxonomyService = {
     confidence_score: number;
     majors: MajorItem[];
   }> {
-    // If backend is online and file is provided, submit to backend Stream A
     if (file) {
       try {
         const formData = new FormData();
@@ -1150,15 +1192,15 @@ export const taxonomyService = {
       }
     }
 
-    // AI Scanner Result Grounded in Circular 09/2022/TT-BGDĐT
+    const currentMajors = await this.fetchMajors();
     return {
       document_title: file
         ? file.name
-        : 'Thông tư 09/2022/TT-BGDĐT (Quy định Danh mục giáo dục, đào tạo cấp IV)',
+        : 'Th?ng t? 09/2022/TT-BGD?T (Quy ??nh Danh m?c gi?o d?c, ??o t?o c?p IV)',
       total_pages: 52,
-      total_majors: OFFICIAL_MOET_MAJORS.length,
+      total_majors: currentMajors.length,
       confidence_score: 99.4,
-      majors: OFFICIAL_MOET_MAJORS,
+      majors: currentMajors,
     };
   },
 };
