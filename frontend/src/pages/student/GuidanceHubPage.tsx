@@ -334,24 +334,44 @@ export const GuidanceHubPage: React.FC = () => {
     return () => window.removeEventListener('careerguide_recommendation_history_updated', handleUpdateHistory);
   }, []);
 
-  const hasTestResults = isAssessmentCompleted || calculatedVector !== null || Object.keys(riasecAnswers).length >= 10;
+  const hasTestResults = Boolean(calculatedVector !== null);
   const hasTranscriptResults = hasAnyGrade;
 
+  // Synchronize state: if student has not completed test, ensure recommendations cannot be displayed from fallback
+  useEffect(() => {
+    if (!calculatedVector && hasCalculatedRecommendations) {
+      setHasCalculatedRecommendations(false);
+      setBroadFields([]);
+      setSelectedField(null);
+      setSelectedMajor(null);
+    }
+  }, [calculatedVector, hasCalculatedRecommendations]);
+
+  const handleClearCurrentRecommendations = () => {
+    setHasCalculatedRecommendations(false);
+    setBroadFields([]);
+    setSelectedField(null);
+    setSelectedMajor(null);
+  };
+
   const handleTriggerRecommendations = () => {
+    // STRICT GUARD: Must have completed assessment vector
+    if (!calculatedVector) {
+      alert('Bạn chưa hoàn thành bài khảo sát sở thích nghề nghiệp (Mục 1). Hệ thống tuân thủ nguyên tắc không đề xuất ngẫu nhiên, vui lòng hoàn thành bài test trước!');
+      handleTabChange('riasec');
+      return;
+    }
+
     setIsCalculatingRecs(true);
-    // Build or use current vector
-    const effectiveVector: RIASECVector = calculatedVector || {
-      R: 0.6,
-      I: 0.7,
-      A: 0.4,
-      S: 0.5,
-      E: 0.5,
-      C: 0.6,
-    };
+    const effectiveVector: RIASECVector = calculatedVector;
 
     // Simulate realistic deterministic calculation latency (450ms)
     setTimeout(() => {
-      recommendationService.getHierarchicalRecommendations(effectiveVector, grades as unknown as Record<string, number>)
+      recommendationService.getHierarchicalRecommendations(
+        effectiveVector,
+        grades as unknown as Record<string, number>,
+        cognitiveAnswers
+      )
         .then(fields => {
           setBroadFields(fields);
           if (fields.length > 0) {
@@ -365,7 +385,7 @@ export const GuidanceHubPage: React.FC = () => {
           const historyItem: RecommendationHistoryItem = {
             id: 'hist_' + Date.now(),
             created_at: new Date().toISOString(),
-            dominant_traits: dominantTraits.length > 0 ? dominantTraits : ['Sở thích tổng quát'],
+            dominant_traits: dominantTraits.length > 0 ? dominantTraits : ['Sở thích thực tế'],
             riasec_vector: effectiveVector,
             top_fields: fields.map(f => ({
               field_name: f.field_name,
@@ -421,8 +441,11 @@ export const GuidanceHubPage: React.FC = () => {
     navigate(`/roadmap/${major.major_code}`);
   };
 
-  // =========================================================================
-  // ASSESSMENT LOGIC HELPERS
+  const handleFullResetAssessment = () => {
+    resetAssessment();
+    setAssessmentStep(0);
+    handleClearCurrentRecommendations();
+  };
   // =========================================================================
   const riasecGroups = questionSet?.riasec_groups || [];
   const riasecQuestions = questionSet?.riasec_questions || [];
@@ -696,7 +719,7 @@ export const GuidanceHubPage: React.FC = () => {
 
             <button
               type="button"
-              onClick={resetAssessment}
+              onClick={handleFullResetAssessment}
               className="px-3 py-1.5 text-xs text-slate-400 hover:text-rose-600 font-medium flex items-center space-x-1"
               title="Làm lại từ đầu"
             >
@@ -1302,52 +1325,111 @@ export const GuidanceHubPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Section B: PROMINENT ACTIVATION BUTTON */}
-          {/* USER SPECIFICATION: Khi mở ra KHÔNG HIỆN SẴN, chỉ có 1 nút bấm sử dụng kết quả test để đề xuất ngành */}
+          {/* Section B: PROMINENT ACTIVATION BUTTON & PREREQUISITE GUARD */}
           {!hasCalculatedRecommendations && (
-            <div className="bg-gradient-to-br from-indigo-900 via-brand-900 to-purple-950 rounded-3xl p-8 sm:p-12 text-center text-white space-y-6 shadow-xl relative overflow-hidden">
-              <div className="max-w-2xl mx-auto space-y-3">
-                <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md text-indigo-200 text-xs font-bold border border-white/10">
-                  <Sparkles className="w-4 h-4 text-amber-400" />
-                  <span>Bộ Máy Trí Tuệ Nhân Tạo Giải Thích Được (XAI Recommender)</span>
+            <div>
+              {!hasTestResults ? (
+                /* GUARD: Student has NOT completed assessment */
+                <div className="bg-gradient-to-br from-slate-900 via-amber-950/70 to-slate-950 rounded-3xl p-8 sm:p-12 text-center text-white space-y-6 shadow-xl relative overflow-hidden border border-amber-500/30">
+                  <div className="max-w-2xl mx-auto space-y-3">
+                    <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-amber-500/20 backdrop-blur-md text-amber-300 text-xs font-bold border border-amber-400/30">
+                      <AlertTriangle className="w-4 h-4 text-amber-400" />
+                      <span>Yêu Cầu Hoàn Thành Bài Khảo Sát Sở Thích (Mục 1)</span>
+                    </div>
+                    <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
+                      Chưa Thể Đề Xuất Ngành Học
+                    </h2>
+                    <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-normal">
+                      Hệ thống tuân thủ nghiêm ngặt nguyên tắc <strong>Không Đề Xuất Ngẫu Nhiên / Không Suy Đoán Vô Căn Cứ</strong>. Thuật toán XAI cần dữ liệu trắc nghiệm sở thích RIASEC (chiếm <strong>45% trọng số</strong>) và thiên hướng nhận thức (<strong>20% trọng số</strong>) của bạn để đối chiếu với danh mục 108 ngành cấp IV của Bộ GD&ĐT.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => handleTabChange('riasec')}
+                      className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-gradient-to-r from-amber-400 via-amber-300 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-black text-sm shadow-xl shadow-amber-500/25 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center space-x-2.5 mx-auto"
+                    >
+                      <Sparkles className="w-4 h-4 text-slate-950" />
+                      <span>👉 LÀM BÀI KHẢO SÁT SỞ THÍCH NGAY (MỤC 1)</span>
+                    </button>
+                    {!hasTranscriptResults && (
+                      <button
+                        type="button"
+                        onClick={() => handleTabChange('transcript')}
+                        className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-sm border border-white/15 transition-all flex items-center justify-center space-x-2"
+                      >
+                        <span>Nhập Điểm Học Bạ (Mục 2)</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="pt-4 flex flex-wrap items-center justify-center gap-4 text-[11px] text-slate-400">
+                    <span className="flex items-center space-x-1.5">
+                      <span className="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
+                      <span className="text-rose-300 font-bold">Mục 1: Trắc nghiệm (45%) — Chưa có</span>
+                    </span>
+                    <span>•</span>
+                    <span className="flex items-center space-x-1.5">
+                      <span className={`w-2 h-2 rounded-full ${hasTranscriptResults ? 'bg-emerald-400' : 'bg-rose-500'} inline-block`}></span>
+                      <span className={hasTranscriptResults ? 'text-emerald-300 font-bold' : 'text-rose-300 font-bold'}>
+                        Mục 2: Học bạ (35%) — {hasTranscriptResults ? 'Đã nhập điểm' : 'Chưa nhập'}
+                      </span>
+                    </span>
+                    <span>•</span>
+                    <span className="flex items-center space-x-1.5">
+                      <span className="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
+                      <span className="text-rose-300 font-bold">Trụ cột 3: Nhận thức (20%) — Chưa có</span>
+                    </span>
+                  </div>
                 </div>
-                <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
-                  Sẵn Sàng Đề Xuất Ngành Học Phù Hợp Nhất
-                </h2>
-                <p className="text-xs sm:text-sm text-indigo-200 leading-relaxed font-normal">
-                  Hệ thống không tự ý đưa ra kết quả ngẫu nhiên. Khi bạn nhấn nút bên dưới, thuật toán sẽ đối chiếu hồ sơ sở thích & học bạ của bạn trên toàn bộ danh mục 80+ ngành cấp IV của Bộ GD&ĐT (Thông tư 09/2022/TT-BGDĐT).
-                </p>
-              </div>
+              ) : (
+                /* READY: Student HAS completed assessment */
+                <div className="bg-gradient-to-br from-indigo-900 via-brand-900 to-purple-950 rounded-3xl p-8 sm:p-12 text-center text-white space-y-6 shadow-xl relative overflow-hidden">
+                  <div className="max-w-2xl mx-auto space-y-3">
+                    <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md text-indigo-200 text-xs font-bold border border-white/10">
+                      <Sparkles className="w-4 h-4 text-amber-400" />
+                      <span>Bộ Máy Trí Tuệ Nhân Tạo Giải Thích Được (XAI Recommender)</span>
+                    </div>
+                    <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
+                      Sẵn Sàng Đề Xuất Ngành Học Phù Hợp Nhất
+                    </h2>
+                    <p className="text-xs sm:text-sm text-indigo-200 leading-relaxed font-normal">
+                      Hồ sơ của bạn đã sẵn sàng! Khi bạn nhấn nút bên dưới, thuật toán sẽ đối chiếu hồ sơ sở thích thực tế ({dominantTraits.length > 0 ? dominantTraits.join(', ') : 'RIASEC'}) và điểm học bạ của bạn trên toàn bộ danh mục 108 ngành cấp IV của Bộ GD&ĐT (Thông tư 09/2022/TT-BGDĐT).
+                    </p>
+                  </div>
 
-              {/* The Key Button */}
-              <div className="pt-2">
-                <button
-                  type="button"
-                  disabled={isCalculatingRecs}
-                  onClick={handleTriggerRecommendations}
-                  className="px-8 sm:px-12 py-4 rounded-2xl bg-gradient-to-r from-amber-400 via-amber-300 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-black text-sm sm:text-base shadow-xl shadow-amber-500/25 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center space-x-3 mx-auto"
-                >
-                  {isCalculatingRecs ? (
-                    <>
-                      <RefreshCw className="w-5 h-5 animate-spin text-slate-950" />
-                      <span>Đang Phân Tích Toán Học 3 Trụ Cột...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-5 h-5 text-slate-950" />
-                      <span>🚀 SỬ DỤNG KẾT QUẢ TEST ĐỂ ĐỀ XUẤT NGÀNH HỌC</span>
-                    </>
-                  )}
-                </button>
-              </div>
+                  {/* The Key Button */}
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      disabled={isCalculatingRecs}
+                      onClick={handleTriggerRecommendations}
+                      className="px-8 sm:px-12 py-4 rounded-2xl bg-gradient-to-r from-amber-400 via-amber-300 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-black text-sm sm:text-base shadow-xl shadow-amber-500/25 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center space-x-3 mx-auto"
+                    >
+                      {isCalculatingRecs ? (
+                        <>
+                          <RefreshCw className="w-5 h-5 animate-spin text-slate-950" />
+                          <span>Đang Phân Tích Toán Học 3 Trụ Cột...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-5 h-5 text-slate-950" />
+                          <span>🚀 SỬ DỤNG KẾT QUẢ TEST ĐỂ ĐỀ XUẤT NGÀNH HỌC</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
 
-              <div className="pt-4 flex flex-wrap items-center justify-center gap-4 text-[11px] text-indigo-300">
-                <span>✓ Cosine Similarity (45%)</span>
-                <span>•</span>
-                <span>✓ Z-Score Quốc Gia (35%)</span>
-                <span>•</span>
-                <span>✓ Rule-based Nhận Thức (20%)</span>
-              </div>
+                  <div className="pt-4 flex flex-wrap items-center justify-center gap-4 text-[11px] text-indigo-300">
+                    <span>✓ Cosine Similarity Thực Tế (45%)</span>
+                    <span>•</span>
+                    <span>✓ Z-Score Quốc Gia (35%)</span>
+                    <span>•</span>
+                    <span>✓ Rule-based Nhận Thức (20%)</span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1386,6 +1468,16 @@ export const GuidanceHubPage: React.FC = () => {
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isCalculatingRecs ? 'animate-spin' : ''}`} />
                     <span>Tính toán lại</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleClearCurrentRecommendations}
+                    className="px-3 py-2 rounded-xl text-rose-500 hover:text-rose-700 hover:bg-rose-50 font-bold text-xs flex items-center space-x-1 transition-all"
+                    title="Xóa bảng kết quả đề xuất hiện tại"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Xóa kết quả</span>
                   </button>
 
                   <button
@@ -1624,32 +1716,32 @@ export const GuidanceHubPage: React.FC = () => {
                                   data={[
                                     {
                                       dim: 'R (Thực tế)',
-                                      student: Math.round(((calculatedVector?.R || 0.6) as number) * 100),
+                                      student: calculatedVector?.R !== undefined ? Math.round((calculatedVector.R as number) * 100) : 0,
                                       major: Math.round((selectedMajor.riasec_vector.R || 0.5) * 100),
                                     },
                                     {
                                       dim: 'I (Nghiên cứu)',
-                                      student: Math.round(((calculatedVector?.I || 0.7) as number) * 100),
+                                      student: calculatedVector?.I !== undefined ? Math.round((calculatedVector.I as number) * 100) : 0,
                                       major: Math.round((selectedMajor.riasec_vector.I || 0.5) * 100),
                                     },
                                     {
                                       dim: 'A (Nghệ thuật)',
-                                      student: Math.round(((calculatedVector?.A || 0.4) as number) * 100),
+                                      student: calculatedVector?.A !== undefined ? Math.round((calculatedVector.A as number) * 100) : 0,
                                       major: Math.round((selectedMajor.riasec_vector.A || 0.5) * 100),
                                     },
                                     {
                                       dim: 'S (Xã hội)',
-                                      student: Math.round(((calculatedVector?.S || 0.5) as number) * 100),
+                                      student: calculatedVector?.S !== undefined ? Math.round((calculatedVector.S as number) * 100) : 0,
                                       major: Math.round((selectedMajor.riasec_vector.S || 0.5) * 100),
                                     },
                                     {
                                       dim: 'E (Quản lý)',
-                                      student: Math.round(((calculatedVector?.E || 0.5) as number) * 100),
+                                      student: calculatedVector?.E !== undefined ? Math.round((calculatedVector.E as number) * 100) : 0,
                                       major: Math.round((selectedMajor.riasec_vector.E || 0.5) * 100),
                                     },
                                     {
                                       dim: 'C (Nghiệp vụ)',
-                                      student: Math.round(((calculatedVector?.C || 0.6) as number) * 100),
+                                      student: calculatedVector?.C !== undefined ? Math.round((calculatedVector.C as number) * 100) : 0,
                                       major: Math.round((selectedMajor.riasec_vector.C || 0.5) * 100),
                                     },
                                   ]}

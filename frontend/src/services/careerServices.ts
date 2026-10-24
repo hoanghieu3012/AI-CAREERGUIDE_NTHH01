@@ -238,7 +238,8 @@ function calculateCosineSimilarity(
 export const recommendationService = {
   async getHierarchicalRecommendations(
     userVector?: RIASECVector | null,
-    grades?: Record<string, number> | Record<string, any> | null
+    grades?: Record<string, number> | Record<string, any> | null,
+    cognitiveAnswers?: Record<string, string> | null
   ): Promise<BroadFieldRecommendation[]> {
     if (!userVector) return [];
 
@@ -252,6 +253,42 @@ export const recommendationService = {
       S: 'Social (Xã hội)',
       E: 'Enterprising (Quản lý)',
       C: 'Conventional (Nghiệp vụ)',
+    };
+
+    // Trait mapping to 2-digit MOET field codes (Circular 74/2026/TT-BGDĐT)
+    const traitMoetMap: Record<string, string[]> = {
+      LEARN_VISUAL_SPATIAL: ['21', '58'],
+      LEARN_AUDITORY: ['22', '32'],
+      LEARN_KINESTHETIC: ['51', '52', '64', '72'],
+      LEARN_READ_WRITE: ['38', '46', '48'],
+      ENV_DYNAMIC_CORPORATE: ['34'],
+      ENV_RESEARCH_LAB: ['42', '44', '72'],
+      ENV_OUTDOOR_FIELD: ['54', '62', '84'],
+      ENV_STRUCTURED_OFFICE: ['38', '48', '34'],
+      PROB_ANALYTICAL_MATH: ['46', '48', '51'],
+      PROB_CREATIVE_INTUITIVE: ['21', '32'],
+      PROB_SOCIAL_COLLABORATIVE: ['14', '76'],
+      PROB_SYSTEMATIC_PROCESS: ['34', '52'],
+      INT_OBJECT_MACHINE: ['51', '52'],
+      INT_PEOPLE_EMPATHY: ['14', '72', '76'],
+      INT_DATA_ALGORITHM: ['46', '48'],
+      INT_IDEA_CONCEPT: ['22', '31'],
+      GARD_LOGICAL_MATH: ['46', '48', '51'],
+      GARD_VERBAL_LINGUISTIC: ['22', '32', '38'],
+      GARD_SPATIAL: ['21', '58'],
+      GARD_INTERPERSONAL: ['14', '34', '76'],
+      PRES_HIGH_COMPETITIVE: ['34'],
+      PRES_STRUCTURED_STABLE: ['14', '38'],
+      PRES_FLEXIBLE_AUTONOMOUS: ['21', '48'],
+      PRES_DEADLINE_PROJECT: ['51', '58'],
+      OUT_PHYSICAL_PRODUCT: ['51', '52', '54'],
+      OUT_DIGITAL_SOFTWARE: ['48'],
+      OUT_SOCIAL_IMPACT: ['14', '72', '76'],
+      OUT_CREATIVE_CONTENT: ['21', '32'],
+      ROLE_LEADER_VISION: ['34'],
+      ROLE_EXPERT_SPECIALIST: ['46', '48', '72'],
+      ROLE_FACILITATOR_HARMONY: ['14', '76'],
+      ROLE_OPERATOR_EXECUTOR: ['51', '52'],
     };
 
     // Calculate score for each major
@@ -277,7 +314,22 @@ export const recommendationService = {
         academicScore = Math.min(99, Math.round((blockTotal / 10) * 100));
       }
 
-      const preferenceScore = 85;
+      // Calculate Cognitive Preference score (20% weight)
+      let preferenceScore = 70;
+      if (cognitiveAnswers && Object.keys(cognitiveAnswers).length > 0) {
+        const moetField = m.major_code.substring(1, 3);
+        let matchCount = 0;
+        for (const val of Object.values(cognitiveAnswers)) {
+          const related = traitMoetMap[val] || [];
+          if (related.includes(moetField)) {
+            matchCount++;
+          }
+        }
+        if (matchCount >= 2) preferenceScore = 95;
+        else if (matchCount === 1) preferenceScore = 85;
+        else preferenceScore = 65;
+      }
+
       const overall = Math.round(riasecScore * 0.45 + academicScore * 0.35 + preferenceScore * 0.20);
 
       const sortedDims = Object.entries(m.riasec).sort((a, b) => b[1] - a[1]);
