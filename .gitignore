@@ -65,6 +65,7 @@ pnpm-debug.log*
 postgres_data/
 *.sqlite
 *.sqlite3
+*.db
 
 # IDE & OS
 .idea/

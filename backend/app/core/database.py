@@ -3,14 +3,22 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.orm import DeclarativeBase
 from app.core.config import settings
 
-# Create Async Engine for PostgreSQL 16
+# Create Async Engine (supports PostgreSQL 16 + pgvector and SQLite aiosqlite)
+engine_kwargs = {
+    "echo": settings.ENVIRONMENT == "development",
+    "future": True,
+}
+
+if settings.DATABASE_URL.startswith("postgresql"):
+    engine_kwargs.update({
+        "pool_size": 10,
+        "max_overflow": 20,
+        "pool_pre_ping": True,
+    })
+
 engine = create_async_engine(
     settings.DATABASE_URL,
-    echo=settings.ENVIRONMENT == "development",
-    future=True,
-    pool_size=10,
-    max_overflow=20,
-    pool_pre_ping=True
+    **engine_kwargs
 )
 
 # Async Session Factory
